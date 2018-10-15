@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -40,6 +43,10 @@ type handler struct {
 }
 
 func (h handler) hierarchyHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	defer func() {
+		fmt.Println("Request hierarchy %s took: %v", r.Method, time.Since(start))
+	}()
 	if err := r.ParseForm(); err != nil {
 		fmt.Fprintf(w, "PasreForm() err:%v", err)
 		return
@@ -58,7 +65,10 @@ func (h handler) hierarchyHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "unable to query(%s)", id)
 			return
 		}
-		sqlResult := []Row{}
+
+		lookupNode := make(map[int64]string)
+		var rootNode *Node
+		var curNode *Node
 		for rows.Next() {
 			var pk int64
 			var nodeid string
@@ -69,9 +79,29 @@ func (h handler) hierarchyHandler(w http.ResponseWriter, r *http.Request) {
 				fmt.Fprintf(w, "error scanning rows got err: %v", err)
 			}
 
-			sqlResult = append(sqlResult, Row{pk, nodeid, path})
+			lookupNode[pk] = nodeid
+			if curNode == nil {
+				rootNode = &Node{ID: nodeid}
+				curNode = rootNode
+				continue
+			}
+			for _, pathv := range strings.Split(path, ".") {
+				pathValue, err := strconv.ParseInt(pathv, 10, 64)
+				if err != nil {
+					fmt.Fprintf(w, "Internal error parshing path %s", path)
+					return
+				}
+				for _, n := range curNode.Children {
+					if n.ID == lookupNode[pathValue] {
+						curNode = n
+						break
+					}
+				}
+			}
+			curNode.Children = append(curNode.Children, &Node{ID: nodeid})
+			curNode = rootNode
 		}
-		err = json.NewEncoder(w).Encode(sqlResult)
+		err = json.NewEncoder(w).Encode(rootNode)
 		if err != nil {
 			fmt.Fprintf(w, "Error while encoding to json, got err: %v", err)
 		}
@@ -109,6 +139,6 @@ type Row struct {
 }
 
 type Node struct {
-	ID    string
-	Nodes []*Node
+	ID       string
+	Children []*Node
 }
