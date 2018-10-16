@@ -45,7 +45,7 @@ type handler struct {
 func (h handler) hierarchyHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	defer func() {
-		fmt.Println("Request hierarchy %s took: %v", r.Method, time.Since(start))
+		fmt.Printf("Request hierarchy %s took: %v \n", r.Method, time.Since(start))
 	}()
 	if err := r.ParseForm(); err != nil {
 		fmt.Fprintf(w, "PasreForm() err:%v", err)
