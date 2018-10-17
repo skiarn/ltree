@@ -38,7 +38,7 @@ func TestInsertOneMillion(t *testing.T) {
 	requests := 0
 	var wg sync.WaitGroup
 	for requests < total {
-		if requests+concurrency <= total {
+		if requests+concurrency >= total {
 			concurrency = total - requests
 		}
 		wg.Add(concurrency)
