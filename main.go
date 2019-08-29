@@ -2,22 +2,25 @@ package main
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 const (
 	host     = "localhost"
 	port     = 5432
-	user     = "testuser"
-	password = "testuser"
+	user     = "postgres"
+	password = "postgres"
 	dbname   = "postgres"
 )
 
@@ -34,12 +37,65 @@ func main() {
 
 	defer db.Close()
 	h := handler{db}
+	h.Load()
 	http.HandleFunc("/hierarchy", h.hierarchyHandler)
+	log.Println("Starting server")
 	log.Fatal(http.ListenAndServe("localhost:9000", nil))
 }
 
 type handler struct {
 	db *sql.DB
+}
+
+func (h handler) Load() {
+	log.Println("Start loading")
+	txn, err := h.db.Begin()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	stmt, err := txn.Prepare(pq.CopyIn("hierarchy", "id", "nodeid", "path"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	csvfile, err := os.Open("data/hierarchy.csv")
+	if err != nil {
+		log.Fatalln("Couldn't open the csv file", err)
+	}
+
+	r := csv.NewReader(csvfile)
+	r.Read()
+	//skip headers
+	for {
+		record, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		_, err = stmt.Exec(record[0], record[1], record[2])
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	_, err = stmt.Exec()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = stmt.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = txn.Commit()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Println("Finish loading")
 }
 
 func (h handler) hierarchyHandler(w http.ResponseWriter, r *http.Request) {
